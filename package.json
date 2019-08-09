@@ -2,16 +2,17 @@
   "name": "jl8-update",
   "version": "1.0.0",
   "description": "Notify me of new jl8 comics",
-  "main": "jl8_update.js",
+  "main": "index.js",
   "dependencies": {
     "fast-html-parser": "^1.0.1",
+    "moment": "^2.24.0",
     "nodemailer": "^5.1.1",
     "request": "^2.88.0"
   },
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node jl8_update.js"
+    "start": "node index.js"
   },
   "author": "Angel Campbell",
   "license": "ISC"
