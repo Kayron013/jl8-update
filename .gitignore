@@ -1,4 +1,11 @@
 node_modules
 .DS_Store
+
+# Private data
 private
+
+# Project zip
 *.zip
+
+# Powershell starter
+start.ps1

@@ -1,23 +1,64 @@
-const request = require('request'),
-  parser = require('fast-html-parser'),
-  nodemailer = require('nodemailer'),
-  fs = require('fs'),
-  moment = require('moment'),
-  db = require('./db/db.json'),
-  credentials = require('./private/credentials.json');
+const request = require('request');
+const parser = require('fast-html-parser');
+const nodemailer = require('nodemailer');
+const moment = require('moment');
+const credentials = require('./private/email_credentials.json');
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3({});
+const bucket_params = require('./private/bucket.json');
+
+exports.handler = async () => {
+  let db;
+  try {
+    db = await getDB();
+    const issue = await getCurrentIssue();
+    const is_new_issue = issue > db.issue;
+    if (is_new_issue) {
+      await sendEmail(issue);
+      db.issue = issue;
+      db.updates++;
+    }
+    db.last_check = formatDate();
+    db.error = {};
+  } catch (e) {
+    console.log(e);
+    if (db) db.error = e;
+  } finally {
+    if (db) {
+      s3.putObject(
+        {
+          ...bucket_params,
+          Body: JSON.stringify(db, undefined, 2)
+        },
+        (err, data) => {
+          if (err) console.log(err);
+          if (data) console.log(data);
+        }
+      );
+    }
+  }
+};
+
+const getDB = () =>
+  new Promise((resolve, reject) => {
+    s3.getObject(bucket_params, (err, data) => {
+      if (err) reject(err.message);
+      else if (data) resolve(JSON.parse(data.Body.toString()));
+    });
+  });
+
+const getCurrentIssue = () =>
+  new Promise((resolve, reject) => {
+    request('http://limbero.org/jl8/', function(error, res, body) {
+      if (error) reject(error);
+      const dom = parser.parse(body);
+      const title = dom.querySelector('title').childNodes[0].rawText;
+      const issue = parseInt(title.substr(1));
+      resolve(issue);
+    });
+  });
 
 const formatDate = () => moment().format('MMM DD, YY hh:mm:ss');
-
-const setError = (msg = '', context = '') => {
-  db.error = { date: formatDate(), msg, context };
-};
-
-const writeToFile = () => {
-  fs.writeFile('db/db.json', JSON.stringify(db, undefined, 2), err => {
-    if (err) console.log('error writing to db', err);
-    else console.log('Done');
-  });
-};
 
 const sendEmail = issue => {
   const transporter = nodemailer.createTransport({
@@ -36,39 +77,5 @@ const sendEmail = issue => {
         <h3>Read it now: <a href='http://limbero.org/jl8/${issue}'>Jl8 #${issue}</a></h3>`
   };
 
-  transporter.sendMail(mailOptions, (err, info) => {
-    if (err) {
-      setError(err, 'sending email');
-      writeToFile();
-    } else {
-      db.issue = issue;
-      db.updates++;
-      db.last_check = formatDate();
-      db.error = {};
-      writeToFile();
-    }
-  });
+  return transporter.sendMail(mailOptions);
 };
-
-const check = () => {
-  request('http://limbero.org/jl8/', function(error, res, body) {
-    if (error) {
-      setError(error, 'url request');
-      writeToFile();
-      return;
-    }
-
-    const dom = parser.parse(body),
-      title = dom.querySelector('title').childNodes[0].rawText,
-      issue = parseInt(title.substr(1));
-
-    if (issue > db.issue) sendEmail(issue);
-    else {
-      db.last_check = formatDate();
-      db.error = {};
-      writeToFile();
-    }
-  });
-};
-
-check();
